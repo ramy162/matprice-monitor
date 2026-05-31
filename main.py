@@ -514,10 +514,94 @@ async def run_once(cfg):
     print(f"💬  {summary.get('summary','')}")
 
 
+# ── Real-time Telegram image listener ────────────────────────────────────────
+async def listen_for_images(cfg):
+    """Listen for new images in the private group and OCR them instantly."""
+    from telethon import events
+
+    bot_token  = os.environ.get("TG_BOT_TOKEN", "")
+    notify_chat = cfg["notify_chat"]
+    ocr_channels = cfg.get("ocr_channels", [])
+    groq_key   = cfg["groq_key"]
+
+    if not ocr_channels:
+        print("⚠️  No OCR_CHANNELS set — real-time listener disabled")
+        return
+
+    print(f"👂  Real-time listener active for: {ocr_channels}")
+
+    async with TelegramClient(StringSession(cfg["session"]), cfg["api_id"], cfg["api_hash"]) as client:
+
+        # Resolve OCR channel entities
+        ocr_entities = []
+        for ch in ocr_channels:
+            try:
+                entity = await client.get_entity(ch)
+                ocr_entities.append(entity)
+            except Exception as e:
+                print(f"  ❌  Could not resolve {ch}: {e}")
+
+        if not ocr_entities:
+            print("⚠️  Could not resolve any OCR channels")
+            return
+
+        @client.on(events.NewMessage(chats=ocr_entities))
+        async def handle_new_message(event):
+            msg = event.message
+            if not msg.photo:
+                return  # Only process images
+
+            print(f"\n📸  New image received in Price Inputs group — OCR'ing...")
+            try:
+                img_bytes = await client.download_media(msg.photo, bytes)
+                if not img_bytes:
+                    return
+
+                ocr_text = ocr_image_with_groq(groq_key, img_bytes)
+
+                if ocr_text and any(c.isdigit() for c in ocr_text):
+                    print(f"  ✅  OCR successful: {ocr_text[:100]}...")
+                    if bot_token and notify_chat:
+                        preview = ocr_text[:400].replace("\n", "\n")
+                        requests.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={
+                                "chat_id": notify_chat,
+                                "text": f"✅ Price image received and read!\n\n📋 Extracted text:\n{preview}\n\n⏰ Will be included in next digest."
+                            },
+                            timeout=10
+                        )
+                else:
+                    print("  ⚠️  OCR found no prices in image")
+                    if bot_token and notify_chat:
+                        requests.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={
+                                "chat_id": notify_chat,
+                                "text": "⚠️ Image received but no prices found. Make sure the price poster is clear and not cropped."
+                            },
+                            timeout=10
+                        )
+            except Exception as e:
+                print(f"  ❌  Error processing image: {e}")
+
+        print("✅  Listening for new images...")
+        await client.run_until_disconnected()
+
+
 async def main():
     cfg = get_cfg()
     print(f"🕐  Scheduler: every {cfg['schedule_hours']}h | {len(cfg['channels'])} channels | threshold {cfg['threshold_pct']}%")
 
+    # Run scheduler and real-time listener in parallel
+    await asyncio.gather(
+        scheduler(cfg),
+        listen_for_images(cfg)
+    )
+
+
+async def scheduler(cfg):
+    """Runs the full digest on a schedule."""
     while True:
         try:
             await run_once(cfg)
