@@ -133,6 +133,18 @@ async def fetch_messages(client, channel_id, limit=50, groq_key="", ocr_enabled=
                         if ocr_text and any(c.isdigit() for c in ocr_text):
                             texts.append(f"[IMAGE OCR] {ocr_text}")
                             image_count += 1
+                            # Send confirmation to user
+                            bot_token = os.environ.get("TG_BOT_TOKEN", "")
+                            notify_chat = os.environ.get("TG_NOTIFY_CHAT", "")
+                            ocr_ch = os.environ.get("OCR_CHANNELS", "")
+                            if bot_token and notify_chat and channel_id in ocr_ch:
+                                preview = ocr_text[:300].replace("\n", " ")
+                                requests.post(
+                                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                    json={"chat_id": notify_chat,
+                                          "text": f"✅ Image read from Price Inputs!\n\n📋 Extracted:\n{preview}..."},
+                                    timeout=10
+                                )
                 except Exception as e:
                     pass
         print(f"  ✅  {channel_id}: {len(texts)} messages ({image_count} images OCR'd)")
