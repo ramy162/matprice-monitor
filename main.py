@@ -395,16 +395,29 @@ def fetch_tiktok_slides_apify(apify_token, tiktok_accounts):
         items = results_resp.json()
         image_urls = []
         for item in items:
-            # Get slide images (photoImages or covers)
-            for img in (item.get("photoImages") or []):
-                url = img.get("imageURL") or img.get("url")
+            source = item.get("authorMeta", {}).get("name", "") or item.get("author", "") or "TikTok"
+            # Try all known slide image fields
+            slides = (item.get("imagePost") or item.get("photoImages") or
+                      item.get("slideshowImages") or item.get("imageList") or [])
+            for img in slides:
+                url = (img.get("imageURL") or img.get("url") or img.get("imageUrl")
+                       or img.get("thumbUrl") or (img if isinstance(img, str) else None))
                 if url:
-                    image_urls.append((url, item.get("authorMeta", {}).get("name", "TikTok")))
-            # Fallback to cover image
-            if not item.get("photoImages") and item.get("covers"):
-                for cover in item["covers"][:1]:
-                    image_urls.append((cover, item.get("authorMeta", {}).get("name", "TikTok")))
+                    image_urls.append((url, source))
+            # Fallback: cover/thumbnail
+            if not slides:
+                for field in ("covers", "coversMedium", "coversLarge"):
+                    covers = item.get(field) or []
+                    for c in covers[:1]:
+                        url = c if isinstance(c, str) else c.get("url", "")
+                        if url:
+                            image_urls.append((url, source))
+                            break
 
+        if items:
+            sample = items[0]
+            keys = list(sample.keys())
+            print(f"  🔍  Apify item keys: {keys[:15]}")
         print(f"  ✅  Apify TikTok: {len(image_urls)} slide images found")
         return image_urls
 
