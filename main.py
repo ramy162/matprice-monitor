@@ -40,7 +40,7 @@ def get_cfg():
         "api_id":        int(cfg["TG_API_ID"]),
         "api_hash":      cfg["TG_API_HASH"],
         "session":       cfg["TG_SESSION"],
-        "channels":      [c.strip() for c in cfg["TG_CHANNELS"].split(",")],
+        "channels":      [c.strip() for c in (cfg["TG_CHANNELS"] or "").split(",") if c.strip()],
         "groq_key":      cfg["GROQ_KEY"],
         "notify_chat":   cfg["TG_NOTIFY_CHAT"],
         "tiktok_accounts": [a.strip() for a in os.environ.get("TIKTOK_ACCOUNTS", "").split(",") if a.strip()],
@@ -83,13 +83,57 @@ def fetch_tiktok_captions(username):
         return []
 
 
+# ── Image OCR via Groq vision ────────────────────────────────────────────────
+def ocr_image_with_groq(groq_key, image_bytes):
+    """Extract text from a price poster image using Groq vision model."""
+    import base64
+    b64 = base64.b64encode(image_bytes).decode()
+    try:
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+            json={
+                "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                        {"type": "text", "text": "This is a construction material price poster from Ethiopia. Extract ALL text you can see — material names, prices, units, dates. Return only the raw extracted text, nothing else."}
+                    ]
+                }],
+                "max_tokens": 500
+            },
+            timeout=30
+        )
+        if resp.ok:
+            return resp.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"    OCR error: {e}")
+    return ""
+
+
 # ── Telegram fetcher ──────────────────────────────────────────────────────────
-async def fetch_messages(client, channel_id, limit=50):
+async def fetch_messages(client, channel_id, limit=50, groq_key=""):
     try:
         entity = await client.get_entity(channel_id)
         messages = await client.get_messages(entity, limit=limit)
-        texts = [m.text.strip() for m in messages if m.text and m.text.strip()]
-        print(f"  ✅  {channel_id}: {len(texts)} messages")
+        texts = []
+        image_count = 0
+        for m in messages:
+            if m.text and m.text.strip():
+                texts.append(m.text.strip())
+            # Download and OCR images (price posters)
+            if m.photo and groq_key and image_count < 10:
+                try:
+                    img_bytes = await client.download_media(m.photo, bytes)
+                    if img_bytes:
+                        ocr_text = ocr_image_with_groq(groq_key, img_bytes)
+                        if ocr_text and any(c.isdigit() for c in ocr_text):
+                            texts.append(f"[IMAGE OCR] {ocr_text}")
+                            image_count += 1
+                except Exception as e:
+                    pass
+        print(f"  ✅  {channel_id}: {len(texts)} messages ({image_count} images OCR'd)")
         return texts
     except Exception as e:
         print(f"  ❌  {channel_id}: {e}")
@@ -165,7 +209,7 @@ def save_history(h):
 def detect_changes(summary, history, threshold_pct):
     alerts = []
     last = history.get("last_prices", {})
-    for cat in summary.get("categories", []):
+    for cat in (summary.get("categories") or []):
         for item in cat["items"]:
             key = f"{cat['name']}::{item['name']}"
             try:
@@ -304,8 +348,8 @@ async def run_once(cfg):
     async with TelegramClient(StringSession(cfg["session"]), cfg["api_id"], cfg["api_hash"]) as client:
         print(f"\n📡  Fetching from {len(cfg['channels'])} channel(s)...")
         all_messages = []
-        for ch in cfg["channels"]:
-            msgs = await fetch_messages(client, ch, cfg["messages_limit"])
+        for ch in (cfg["channels"] or []):
+            msgs = await fetch_messages(client, ch, cfg["messages_limit"], cfg["groq_key"])
             for m in msgs:
                 all_messages.append(f"[{ch}] {m}")
 
