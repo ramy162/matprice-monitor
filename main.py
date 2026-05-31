@@ -114,41 +114,37 @@ def ocr_image_with_groq(groq_key, image_bytes):
     return ""
 
 
-# ── Last read tracker ────────────────────────────────────────────────────────
-LAST_READ_FILE = Path("/tmp/last_read.json")
+# ── Message cutoff — only read messages after START_FROM_DATE ────────────────
+def get_cutoff_date():
+    """Only read messages newer than this date. Set START_FROM_DATE env var as YYYY-MM-DD."""
+    date_str = os.environ.get("START_FROM_DATE", "")
+    if date_str:
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d")
+        except:
+            pass
+    # Default: only read messages from last 24 hours
+    return datetime.now() - timedelta(hours=24)
 
 def get_last_read(channel_id):
-    try:
-        if LAST_READ_FILE.exists():
-            data = json.loads(LAST_READ_FILE.read_text())
-            return data.get(channel_id, 0)
-    except:
-        pass
-    return 0
+    return 0  # Not used anymore
 
 def set_last_read(channel_id, msg_id):
-    try:
-        data = {}
-        if LAST_READ_FILE.exists():
-            data = json.loads(LAST_READ_FILE.read_text())
-        data[channel_id] = msg_id
-        LAST_READ_FILE.write_text(json.dumps(data))
-    except:
-        pass
+    pass  # Not used anymore
 
 
 # ── Telegram fetcher ──────────────────────────────────────────────────────────
 async def fetch_messages(client, channel_id, limit=50, groq_key="", ocr_enabled=False):
     try:
         entity = await client.get_entity(channel_id)
-        last_id = get_last_read(channel_id)
-        messages = await client.get_messages(entity, limit=limit, min_id=last_id)
+        cutoff = get_cutoff_date()
+        messages = await client.get_messages(entity, limit=limit)
         texts = []
         image_count = 0
-        max_id = last_id
         for m in messages:
-            if m.id > max_id:
-                max_id = m.id
+            # Skip messages older than cutoff date
+            if m.date.replace(tzinfo=None) < cutoff:
+                continue
             if m.text and m.text.strip():
                 texts.append(m.text.strip())
             # Download and OCR images (price posters)
@@ -174,9 +170,6 @@ async def fetch_messages(client, channel_id, limit=50, groq_key="", ocr_enabled=
                                 )
                 except Exception as e:
                     pass
-        # Update last read position
-        if max_id > last_id:
-            set_last_read(channel_id, max_id)
         print(f"  ✅  {channel_id}: {len(texts)} new messages ({image_count} images OCR'd)")
         return texts
     except Exception as e:
