@@ -44,6 +44,8 @@ def get_cfg():
         "groq_key":      cfg["GROQ_KEY"],
         "notify_chat":   cfg["TG_NOTIFY_CHAT"],
         "tiktok_accounts": [a.strip() for a in os.environ.get("TIKTOK_ACCOUNTS", "").split(",") if a.strip()],
+        "ocr_channels": [a.strip() for a in os.environ.get("OCR_CHANNELS", "").split(",") if a.strip()],
+        "apify_token": os.environ.get("APIFY_TOKEN", ""),
         "schedule_hours": float(os.environ.get("SCHEDULE_HOURS", "12")),
         "threshold_pct":  float(os.environ.get("ALERT_THRESHOLD_PCT", "5")),
         "messages_limit": int(os.environ.get("MESSAGES_PER_CHANNEL", "50")),
@@ -113,7 +115,7 @@ def ocr_image_with_groq(groq_key, image_bytes):
 
 
 # ── Telegram fetcher ──────────────────────────────────────────────────────────
-async def fetch_messages(client, channel_id, limit=50, groq_key=""):
+async def fetch_messages(client, channel_id, limit=50, groq_key="", ocr_enabled=False):
     try:
         entity = await client.get_entity(channel_id)
         messages = await client.get_messages(entity, limit=limit)
@@ -123,7 +125,7 @@ async def fetch_messages(client, channel_id, limit=50, groq_key=""):
             if m.text and m.text.strip():
                 texts.append(m.text.strip())
             # Download and OCR images (price posters)
-            if m.photo and groq_key and image_count < 10:
+            if m.photo and groq_key and ocr_enabled and image_count < 10:
                 try:
                     img_bytes = await client.download_media(m.photo, bytes)
                     if img_bytes:
@@ -339,6 +341,95 @@ def send_to_telegram(bot_token, chat_id, image_buf, alerts, summary):
         print(f"❌  Telegram send failed: {resp.text[:200]}")
 
 
+# ── Apify TikTok slide scraper ────────────────────────────────────────────────
+def fetch_tiktok_slides_apify(apify_token, tiktok_accounts):
+    """Use Apify TikTok Scraper to get slide images from TikTok profiles."""
+    if not apify_token or not tiktok_accounts:
+        return []
+
+    profile_urls = [f"https://www.tiktok.com/@{a.lstrip('@')}" for a in tiktok_accounts]
+
+    # Start Apify actor run
+    try:
+        start_resp = requests.post(
+            "https://api.apify.com/v2/acts/clockworks~tiktok-scraper/runs",
+            headers={"Authorization": f"Bearer {apify_token}", "Content-Type": "application/json"},
+            json={
+                "profiles": profile_urls,
+                "resultsPerPage": 10,
+                "shouldDownloadCovers": True,
+                "shouldDownloadVideos": False,
+                "shouldDownloadSubtitles": False,
+            },
+            timeout=30
+        )
+        if not start_resp.ok:
+            print(f"  ❌  Apify start failed: {start_resp.text[:200]}")
+            return []
+
+        run_id = start_resp.json()["data"]["id"]
+        print(f"  ⏳  Apify TikTok scrape started (run {run_id})...")
+
+        # Wait for completion (max 60 seconds)
+        import time
+        for _ in range(12):
+            time.sleep(5)
+            status_resp = requests.get(
+                f"https://api.apify.com/v2/actor-runs/{run_id}",
+                headers={"Authorization": f"Bearer {apify_token}"},
+                timeout=15
+            )
+            status = status_resp.json()["data"]["status"]
+            if status == "SUCCEEDED":
+                break
+            elif status in ("FAILED", "ABORTED", "TIMED-OUT"):
+                print(f"  ❌  Apify run {status}")
+                return []
+
+        # Get results
+        results_resp = requests.get(
+            f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items",
+            headers={"Authorization": f"Bearer {apify_token}"},
+            timeout=15
+        )
+        items = results_resp.json()
+        image_urls = []
+        for item in items:
+            # Get slide images (photoImages or covers)
+            for img in (item.get("photoImages") or []):
+                url = img.get("imageURL") or img.get("url")
+                if url:
+                    image_urls.append((url, item.get("authorMeta", {}).get("name", "TikTok")))
+            # Fallback to cover image
+            if not item.get("photoImages") and item.get("covers"):
+                for cover in item["covers"][:1]:
+                    image_urls.append((cover, item.get("authorMeta", {}).get("name", "TikTok")))
+
+        print(f"  ✅  Apify TikTok: {len(image_urls)} slide images found")
+        return image_urls
+
+    except Exception as e:
+        print(f"  ❌  Apify error: {e}")
+        return []
+
+
+def ocr_tiktok_slides(groq_key, apify_token, tiktok_accounts):
+    """Download TikTok slide images and OCR them."""
+    image_urls = fetch_tiktok_slides_apify(apify_token, tiktok_accounts)
+    texts = []
+    for url, source in image_urls[:10]:
+        try:
+            img_resp = requests.get(url, timeout=15)
+            if img_resp.ok:
+                ocr_text = ocr_image_with_groq(groq_key, img_resp.content)
+                if ocr_text and any(c.isdigit() for c in ocr_text):
+                    texts.append(f"[TikTok @{source}] {ocr_text}")
+        except Exception as e:
+            pass
+    print(f"  ✅  TikTok slides OCR: {len(texts)} images with prices")
+    return texts
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 async def run_once(cfg):
     print(f"\n{'='*55}")
@@ -349,14 +440,19 @@ async def run_once(cfg):
         print(f"\n📡  Fetching from {len(cfg['channels'])} channel(s)...")
         all_messages = []
         for ch in (cfg["channels"] or []):
-            msgs = await fetch_messages(client, ch, cfg["messages_limit"], cfg["groq_key"])
+            ocr_on = ch in (cfg.get("ocr_channels") or [])
+            msgs = await fetch_messages(client, ch, cfg["messages_limit"], cfg["groq_key"], ocr_on)
             for m in msgs:
                 all_messages.append(f"[{ch}] {m}")
 
-    # Fetch TikTok accounts
-    for tt in cfg.get("tiktok_accounts", []):
-        tt_msgs = fetch_tiktok_captions(tt)
-        all_messages.extend(tt_msgs)
+    # Fetch TikTok slide images via Apify and OCR them
+    if cfg.get("apify_token") and cfg.get("tiktok_accounts"):
+        tt_texts = ocr_tiktok_slides(cfg["groq_key"], cfg["apify_token"], cfg["tiktok_accounts"])
+        all_messages.extend(tt_texts)
+    elif cfg.get("tiktok_accounts"):
+        for tt in cfg["tiktok_accounts"]:
+            tt_msgs = fetch_tiktok_captions(tt)
+            all_messages.extend(tt_msgs)
 
     if not all_messages:
         print("⚠️  No messages collected.")
