@@ -43,10 +43,44 @@ def get_cfg():
         "channels":      [c.strip() for c in cfg["TG_CHANNELS"].split(",")],
         "groq_key":      cfg["GROQ_KEY"],
         "notify_chat":   cfg["TG_NOTIFY_CHAT"],
+        "tiktok_accounts": [a.strip() for a in os.environ.get("TIKTOK_ACCOUNTS", "").split(",") if a.strip()],
         "schedule_hours": float(os.environ.get("SCHEDULE_HOURS", "12")),
         "threshold_pct":  float(os.environ.get("ALERT_THRESHOLD_PCT", "5")),
         "messages_limit": int(os.environ.get("MESSAGES_PER_CHANNEL", "50")),
     }
+
+
+# ── TikTok scraper ───────────────────────────────────────────────────────────
+def fetch_tiktok_captions(username):
+    """Scrape recent video captions from a TikTok profile page."""
+    username = username.lstrip("@")
+    url = f"https://www.tiktok.com/@{username}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        html = resp.text
+        texts = []
+        descs = re.findall(r'"desc":"([^"]{10,300})"', html)
+        for d in descs[:20]:
+            try:
+                cleaned = d.encode().decode('unicode_escape', errors='ignore')
+                if any(c.isdigit() for c in cleaned):
+                    texts.append(cleaned)
+            except:
+                pass
+        price_patterns = re.findall(r'[\w\s]{2,30}[\s:]+\d[\d,\.]+\s*(?:birr|ETB)?', html, re.IGNORECASE)
+        texts.extend(price_patterns[:10])
+        if texts:
+            print(f"  ✅  TikTok @{username}: {len(texts)} snippets found")
+        else:
+            print(f"  ⚠️  TikTok @{username}: no price text found")
+        return [f"[TikTok @{username}] {t}" for t in texts]
+    except Exception as e:
+        print(f"  ❌  TikTok @{username}: {e}")
+        return []
 
 
 # ── Telegram fetcher ──────────────────────────────────────────────────────────
@@ -274,6 +308,11 @@ async def run_once(cfg):
             msgs = await fetch_messages(client, ch, cfg["messages_limit"])
             for m in msgs:
                 all_messages.append(f"[{ch}] {m}")
+
+    # Fetch TikTok accounts
+    for tt in cfg.get("tiktok_accounts", []):
+        tt_msgs = fetch_tiktok_captions(tt)
+        all_messages.extend(tt_msgs)
 
     if not all_messages:
         print("⚠️  No messages collected.")
