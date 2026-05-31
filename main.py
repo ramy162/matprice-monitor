@@ -114,14 +114,41 @@ def ocr_image_with_groq(groq_key, image_bytes):
     return ""
 
 
+# ── Last read tracker ────────────────────────────────────────────────────────
+LAST_READ_FILE = Path("/tmp/last_read.json")
+
+def get_last_read(channel_id):
+    try:
+        if LAST_READ_FILE.exists():
+            data = json.loads(LAST_READ_FILE.read_text())
+            return data.get(channel_id, 0)
+    except:
+        pass
+    return 0
+
+def set_last_read(channel_id, msg_id):
+    try:
+        data = {}
+        if LAST_READ_FILE.exists():
+            data = json.loads(LAST_READ_FILE.read_text())
+        data[channel_id] = msg_id
+        LAST_READ_FILE.write_text(json.dumps(data))
+    except:
+        pass
+
+
 # ── Telegram fetcher ──────────────────────────────────────────────────────────
 async def fetch_messages(client, channel_id, limit=50, groq_key="", ocr_enabled=False):
     try:
         entity = await client.get_entity(channel_id)
-        messages = await client.get_messages(entity, limit=limit)
+        last_id = get_last_read(channel_id)
+        messages = await client.get_messages(entity, limit=limit, min_id=last_id)
         texts = []
         image_count = 0
+        max_id = last_id
         for m in messages:
+            if m.id > max_id:
+                max_id = m.id
             if m.text and m.text.strip():
                 texts.append(m.text.strip())
             # Download and OCR images (price posters)
@@ -147,7 +174,10 @@ async def fetch_messages(client, channel_id, limit=50, groq_key="", ocr_enabled=
                                 )
                 except Exception as e:
                     pass
-        print(f"  ✅  {channel_id}: {len(texts)} messages ({image_count} images OCR'd)")
+        # Update last read position
+        if max_id > last_id:
+            set_last_read(channel_id, max_id)
+        print(f"  ✅  {channel_id}: {len(texts)} new messages ({image_count} images OCR'd)")
         return texts
     except Exception as e:
         print(f"  ❌  {channel_id}: {e}")
