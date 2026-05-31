@@ -98,7 +98,7 @@ def ocr_image_with_groq(groq_key, image_bytes):
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                        {"type": "text", "text": "This is a construction material price poster from Ethiopia. Extract ALL text you can see — material names, prices, units, dates. Return only the raw extracted text, nothing else."}
+                        {"type": "text", "text": "This is a construction material price comparison table from Ethiopia. Extract every row as: MATERIAL NAME | OLD PRICE | NEW PRICE | CHANGE. Also extract the dates shown. Return only the extracted data as plain text rows, one per line. Be thorough — extract every single material row you can see."}
                     ]
                 }],
                 "max_tokens": 500
