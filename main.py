@@ -337,7 +337,7 @@ def draw_summary_image(summary):
     draw_gradient(draw, 0, 6, W, HEADER, (20, 25, 40), (12, 15, 25))
 
     # Title
-    f_title  = get_font(58, bold=True)
+    f_title  = get_font(72, bold=True)
     f_sub    = get_font(22)
     f_date   = get_font(20)
     f_cat    = get_font(24, bold=True)
@@ -354,14 +354,14 @@ def draw_summary_image(summary):
 
     # Date badge
     date_str = datetime.now().strftime("%d %B %Y").upper()
-    draw.rounded_rectangle([PAD, 138, PAD + 220, 165], radius=4, fill=(212, 175, 55, 40))
+    draw.rounded_rectangle([PAD, 175, PAD + 340, 215], radius=4, fill=(212, 175, 55, 40))
     draw.rectangle([PAD, 138, PAD + 3, 165], fill=(212, 175, 55))
-    draw.text((PAD + 12, 143), f"📅  {date_str}", font=f_date, fill=(212, 175, 55))
+    draw.text((PAD + 16, 183), date_str, font=f_date, fill=(212, 175, 55))
 
     # Market summary
     summary_text = summary.get("summary", "")
     wrapped = textwrap.fill(summary_text, 85)
-    draw.text((PAD, 178), wrapped, font=f_date, fill=(160, 165, 180))
+    draw.text((PAD, 228), wrapped, font=f_date, fill=(160, 165, 180))
 
     # Divider
     draw.rectangle([0, HEADER - 1, W, HEADER + 1], fill=(212, 175, 55, 80))
@@ -436,7 +436,7 @@ def draw_summary_image(summary):
                 draw.rounded_rectangle([bx, y+12, bx+110, y+ROW_H-12], radius=8, fill=badge_bg)
                 draw.text((bx+8, y+17), f"{arrow} {abs(change):.1f}%", font=f_badge, fill=badge_col)
             else:
-                draw.text((1090, y + ROW_H//2 - 10), "—", font=f_date, fill=(60, 65, 85))
+                draw.text((1090, y + ROW_H//2 - 10), "-", font=f_date, fill=(60, 65, 85))
 
             # Bottom separator
             draw.rectangle([PAD, y + ROW_H - 1, W - PAD, y + ROW_H], fill=(30, 35, 55))
