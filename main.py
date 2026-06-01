@@ -312,12 +312,12 @@ def draw_gradient(draw, x1, y1, x2, y2, color1, color2, vertical=True):
             draw.line([(x1+i, y1), (x1+i, y2)], fill=(r, g, b))
 
 def draw_summary_image(summary):
-    W = 1080
+    W = 1200
     PAD = 40
-    ROW_H = 56
-    CAT_HEAD = 64
-    HEADER = 220
-    FOOTER = 100
+    ROW_H = 80
+    CAT_HEAD = 80
+    HEADER = 270
+    FOOTER = 120
     categories = summary.get("categories", [])
     total_rows = sum(len(c["items"]) for c in categories)
     H = HEADER + len(categories) * CAT_HEAD + total_rows * ROW_H + FOOTER + PAD
@@ -337,15 +337,15 @@ def draw_summary_image(summary):
     draw_gradient(draw, 0, 6, W, HEADER, (20, 25, 40), (12, 15, 25))
 
     # Title
-    f_title  = get_font(42, bold=True)
-    f_sub    = get_font(15)
-    f_date   = get_font(13)
-    f_cat    = get_font(17, bold=True)
-    f_item   = get_font(15)
-    f_price  = get_font(16, bold=True)
-    f_badge  = get_font(13, bold=True)
-    f_footer = get_font(12)
-    f_col    = get_font(12, bold=True)
+    f_title  = get_font(58, bold=True)
+    f_sub    = get_font(22)
+    f_date   = get_font(20)
+    f_cat    = get_font(24, bold=True)
+    f_item   = get_font(22)
+    f_price  = get_font(28, bold=True)
+    f_badge  = get_font(20, bold=True)
+    f_footer = get_font(18)
+    f_col    = get_font(18, bold=True)
 
     title = "CONSTRUCTION MATERIAL"
     title2 = "PRICE REPORT"
@@ -368,12 +368,12 @@ def draw_summary_image(summary):
     draw.rectangle([0, HEADER - 1, W, HEADER], fill=(40, 45, 65))
 
     # ── Column headers ────────────────────────────────────────────────────────
-    COL_HEADER_H = 36
+    COL_HEADER_H = 50
     draw.rectangle([0, HEADER, W, HEADER + COL_HEADER_H], fill=(15, 18, 30))
     draw.text((PAD, HEADER + 10), "MATERIAL", font=f_col, fill=(100, 110, 140))
-    draw.text((620, HEADER + 10), "PRICE", font=f_col, fill=(100, 110, 140))
-    draw.text((790, HEADER + 10), "UNIT", font=f_col, fill=(100, 110, 140))
-    draw.text((940, HEADER + 10), "CHANGE", font=f_col, fill=(100, 110, 140))
+    draw.text((700, HEADER + 10), "PRICE (ETB)", font=f_col, fill=(100, 110, 140))
+    draw.text((930, HEADER + 10), "UNIT", font=f_col, fill=(100, 110, 140))
+    draw.text((1090, HEADER + 10), "CHG", font=f_col, fill=(100, 110, 140))
 
     # ── Categories & items ────────────────────────────────────────────────────
     y = HEADER + COL_HEADER_H
@@ -410,11 +410,11 @@ def draw_summary_image(summary):
 
             # Price
             price_str = item.get("price", "—")
-            draw.text((620, y + ROW_H//2 - 10), price_str, font=f_price, fill=(255, 255, 255))
+            draw.text((700, y + ROW_H//2 - 14), price_str, font=f_price, fill=(255, 255, 255))
 
             # Unit
             unit_str = item.get("unit", "")
-            draw.text((790, y + ROW_H//2 - 8), unit_str, font=f_date, fill=(120, 130, 155))
+            draw.text((930, y + ROW_H//2 - 10), unit_str, font=f_date, fill=(120, 130, 155))
 
             # Change badge
             change = item.get("change")
@@ -432,11 +432,11 @@ def draw_summary_image(summary):
                     badge_bg  = (20, 70, 30)
                     badge_col = (80, 220, 120)
                     arrow = "▼"
-                bx = 930
+                bx = 1070
                 draw.rounded_rectangle([bx, y+12, bx+110, y+ROW_H-12], radius=8, fill=badge_bg)
                 draw.text((bx+8, y+17), f"{arrow} {abs(change):.1f}%", font=f_badge, fill=badge_col)
             else:
-                draw.text((940, y + ROW_H//2 - 8), "—", font=f_date, fill=(60, 65, 85))
+                draw.text((1090, y + ROW_H//2 - 10), "—", font=f_date, fill=(60, 65, 85))
 
             # Bottom separator
             draw.rectangle([PAD, y + ROW_H - 1, W - PAD, y + ROW_H], fill=(30, 35, 55))
