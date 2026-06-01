@@ -254,10 +254,13 @@ def detect_changes(summary, history, threshold_pct):
             except:
                 price_num = None
             if price_num and key in last:
-                old = last[key]
-                if old > 0:
-                    pct = ((price_num - old) / old) * 100
-                    item["change"] = round(pct, 1)
+                try:
+                    old = float(last[key])
+                    if old > 0:
+                        pct = ((price_num - old) / old) * 100
+                        item["change"] = round(pct, 1)
+                except:
+                    pass
                     if abs(pct) >= threshold_pct:
                         direction = "UP 🔴" if pct > 0 else "DOWN 🟢"
                         alerts.append(f"{item['name']} ({cat['name']}) {direction} {abs(pct):.1f}%")
@@ -415,6 +418,10 @@ def draw_summary_image(summary):
 
             # Change badge
             change = item.get("change")
+            try:
+                change = float(change) if change is not None else None
+            except:
+                change = None
             if change is not None:
                 up = change >= 0
                 if up:
