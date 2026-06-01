@@ -268,17 +268,15 @@ def detect_changes(summary, history, threshold_pct):
     return alerts
 
 
-# ── Image generator ───────────────────────────────────────────────────────────
+# ── Image generator (professional broadcast design) ───────────────────────────
 CATEGORY_COLORS = {
-    "Cement":           "#c8f04a",
-    "Steel & Iron":     "#4af0c8",
-    "Sand & Aggregate": "#f0a832",
-    "Timber & Wood":    "#a06af0",
-    "Blocks & Bricks":  "#f04a4a",
-    "Other Materials":  "#4a80f0",
+    "Cement":           ("#F5A623", "#3D2800"),
+    "Steel & Iron":     ("#4FC3F7", "#0D2733"),
+    "Sand & Aggregate": ("#81C784", "#0D2413"),
+    "Timber & Wood":    ("#CE93D8", "#2D0D3D"),
+    "Blocks & Bricks":  ("#FF8A65", "#3D1500"),
+    "Other Materials":  ("#80CBC4", "#0D2D2B"),
 }
-BG = (14,15,14); BG2 = (22,23,20); BG3 = (30,31,28)
-TEXT = (232,230,222); MUTED = (120,120,112); ACCENT = (200,240,74)
 
 def hex_to_rgb(h):
     h = h.lstrip("#")
@@ -297,61 +295,164 @@ def get_font(size, bold=False):
             pass
     return ImageFont.load_default()
 
+def draw_gradient(draw, x1, y1, x2, y2, color1, color2, vertical=True):
+    """Draw a simple gradient rectangle."""
+    steps = y2 - y1 if vertical else x2 - x1
+    for i in range(steps):
+        t = i / max(steps, 1)
+        r = int(color1[0] + (color2[0] - color1[0]) * t)
+        g = int(color1[1] + (color2[1] - color1[1]) * t)
+        b = int(color1[2] + (color2[2] - color1[2]) * t)
+        if vertical:
+            draw.line([(x1, y1+i), (x2, y1+i)], fill=(r, g, b))
+        else:
+            draw.line([(x1+i, y1), (x1+i, y2)], fill=(r, g, b))
+
 def draw_summary_image(summary):
-    W = 900; ROW_H = 46; CAT_HEAD = 52; HEADER = 170; FOOTER = 70
+    W = 1080
+    PAD = 40
+    ROW_H = 56
+    CAT_HEAD = 64
+    HEADER = 220
+    FOOTER = 100
     categories = summary.get("categories", [])
     total_rows = sum(len(c["items"]) for c in categories)
-    H = HEADER + len(categories)*CAT_HEAD + total_rows*ROW_H + FOOTER + 20
+    H = HEADER + len(categories) * CAT_HEAD + total_rows * ROW_H + FOOTER + PAD
 
-    img = Image.new("RGB", (W, H), BG)
+    img = Image.new("RGB", (W, H), (10, 12, 18))
     draw = ImageDraw.Draw(img)
 
-    f_title = get_font(30, bold=True)
-    f_sub   = get_font(13)
-    f_cat   = get_font(18, bold=True)
-    f_item  = get_font(14)
-    f_price = get_font(15, bold=True)
-    f_badge = get_font(12, bold=True)
-    f_muted = get_font(11)
+    # ── Background gradient ───────────────────────────────────────────────────
+    draw_gradient(draw, 0, 0, W, H // 2, (10, 12, 18), (18, 22, 35))
+    draw_gradient(draw, 0, H // 2, W, H, (18, 22, 35), (10, 12, 18))
 
-    # Header
-    draw.rectangle([0,0,W,HEADER], fill=BG2)
-    draw.rectangle([0,HEADER-2,W,HEADER], fill=ACCENT)
-    draw.text((40,28), "MatPrice Monitor", font=f_title, fill=ACCENT)
-    draw.text((40,72), "CONSTRUCTION MATERIAL PRICE DIGEST", font=f_sub, fill=MUTED)
-    draw.text((40,96), datetime.now().strftime("%A, %d %B %Y  •  %H:%M"), font=f_sub, fill=TEXT)
-    wrapped = textwrap.fill(summary.get("summary",""), 110)
-    draw.text((40,124), wrapped, font=f_muted, fill=(160,158,150))
+    # ── Header ────────────────────────────────────────────────────────────────
+    # Gold accent bar at top
+    draw.rectangle([0, 0, W, 6], fill=(212, 175, 55))
 
-    y = HEADER + 10
+    # Header background
+    draw_gradient(draw, 0, 6, W, HEADER, (20, 25, 40), (12, 15, 25))
+
+    # Title
+    f_title  = get_font(42, bold=True)
+    f_sub    = get_font(15)
+    f_date   = get_font(13)
+    f_cat    = get_font(17, bold=True)
+    f_item   = get_font(15)
+    f_price  = get_font(16, bold=True)
+    f_badge  = get_font(13, bold=True)
+    f_footer = get_font(12)
+    f_col    = get_font(12, bold=True)
+
+    title = "CONSTRUCTION MATERIAL"
+    title2 = "PRICE REPORT"
+    draw.text((PAD, 28), title, font=f_title, fill=(212, 175, 55))
+    draw.text((PAD, 78), title2, font=f_title, fill=(255, 255, 255))
+
+    # Date badge
+    date_str = datetime.now().strftime("%d %B %Y").upper()
+    draw.rounded_rectangle([PAD, 138, PAD + 220, 165], radius=4, fill=(212, 175, 55, 40))
+    draw.rectangle([PAD, 138, PAD + 3, 165], fill=(212, 175, 55))
+    draw.text((PAD + 12, 143), f"📅  {date_str}", font=f_date, fill=(212, 175, 55))
+
+    # Market summary
+    summary_text = summary.get("summary", "")
+    wrapped = textwrap.fill(summary_text, 85)
+    draw.text((PAD, 178), wrapped, font=f_date, fill=(160, 165, 180))
+
+    # Divider
+    draw.rectangle([0, HEADER - 1, W, HEADER + 1], fill=(212, 175, 55, 80))
+    draw.rectangle([0, HEADER - 1, W, HEADER], fill=(40, 45, 65))
+
+    # ── Column headers ────────────────────────────────────────────────────────
+    COL_HEADER_H = 36
+    draw.rectangle([0, HEADER, W, HEADER + COL_HEADER_H], fill=(15, 18, 30))
+    draw.text((PAD, HEADER + 10), "MATERIAL", font=f_col, fill=(100, 110, 140))
+    draw.text((620, HEADER + 10), "PRICE", font=f_col, fill=(100, 110, 140))
+    draw.text((790, HEADER + 10), "UNIT", font=f_col, fill=(100, 110, 140))
+    draw.text((940, HEADER + 10), "CHANGE", font=f_col, fill=(100, 110, 140))
+
+    # ── Categories & items ────────────────────────────────────────────────────
+    y = HEADER + COL_HEADER_H
+
     for cat in categories:
-        accent_rgb = hex_to_rgb(CATEGORY_COLORS.get(cat["name"], "#c8f04a"))
-        draw.rectangle([0,y,W,y+CAT_HEAD], fill=BG3)
-        draw.rectangle([0,y,4,y+CAT_HEAD], fill=accent_rgb)
-        draw.text((24,y+14), f"{cat.get('icon','•')}  {cat['name']}", font=f_cat, fill=accent_rgb)
+        accent_hex, bg_hex = CATEGORY_COLORS.get(cat["name"], ("#F5A623", "#3D2800"))
+        accent = hex_to_rgb(accent_hex)
+        cat_bg  = hex_to_rgb(bg_hex)
+
+        # Category header
+        draw.rectangle([0, y, W, y + CAT_HEAD], fill=cat_bg)
+        draw.rectangle([0, y, 5, y + CAT_HEAD], fill=accent)
+        # Category icon + name
+        icon = cat.get("icon", "▸")
+        draw.text((PAD, y + 18), f"{icon}  {cat['name'].upper()}", font=f_cat, fill=accent)
+        # Item count badge
+        count = len(cat["items"])
+        badge_text = f"{count} items"
+        draw.rounded_rectangle([W - 110, y + 18, W - PAD, y + 44], radius=10, fill=(255,255,255,15))
+        draw.text((W - 100, y + 22), badge_text, font=f_date, fill=accent)
         y += CAT_HEAD
 
         for idx, item in enumerate(cat["items"]):
-            draw.rectangle([0,y,W,y+ROW_H], fill=BG if idx%2==0 else BG2)
-            draw.text((30,y+14), item.get("name",""), font=f_item, fill=TEXT)
-            price_str = item.get("price","—")
-            unit_str  = item.get("unit","")
-            draw.text((340,y+13), f"{price_str}  /  {unit_str}" if unit_str else price_str, font=f_price, fill=(255,255,255))
+            # Alternating row backgrounds
+            row_bg = (16, 20, 32) if idx % 2 == 0 else (20, 24, 38)
+            draw.rectangle([0, y, W, y + ROW_H], fill=row_bg)
+
+            # Left accent dot
+            draw.ellipse([PAD - 12, y + ROW_H//2 - 3, PAD - 6, y + ROW_H//2 + 3], fill=accent)
+
+            # Material name
+            name = item.get("name", "")
+            draw.text((PAD + 4, y + ROW_H//2 - 10), name, font=f_item, fill=(220, 225, 235))
+
+            # Price
+            price_str = item.get("price", "—")
+            draw.text((620, y + ROW_H//2 - 10), price_str, font=f_price, fill=(255, 255, 255))
+
+            # Unit
+            unit_str = item.get("unit", "")
+            draw.text((790, y + ROW_H//2 - 8), unit_str, font=f_date, fill=(120, 130, 155))
+
+            # Change badge
             change = item.get("change")
             if change is not None:
                 up = change >= 0
-                draw.rounded_rectangle([578,y+10,672,y+36], radius=6, fill=(58,26,26) if up else (26,46,26))
-                draw.text((590,y+13), f"{'▲' if up else '▼'} {abs(change):.1f}%", font=f_badge, fill=(240,74,74) if up else (74,240,74))
-            draw.text((700,y+16), item.get("source",""), font=f_muted, fill=MUTED)
+                if up:
+                    badge_bg  = (80, 20, 20)
+                    badge_col = (255, 100, 100)
+                    arrow = "▲"
+                else:
+                    badge_bg  = (20, 70, 30)
+                    badge_col = (80, 220, 120)
+                    arrow = "▼"
+                bx = 930
+                draw.rounded_rectangle([bx, y+12, bx+110, y+ROW_H-12], radius=8, fill=badge_bg)
+                draw.text((bx+8, y+17), f"{arrow} {abs(change):.1f}%", font=f_badge, fill=badge_col)
+            else:
+                draw.text((940, y + ROW_H//2 - 8), "—", font=f_date, fill=(60, 65, 85))
+
+            # Bottom separator
+            draw.rectangle([PAD, y + ROW_H - 1, W - PAD, y + ROW_H], fill=(30, 35, 55))
             y += ROW_H
 
-    draw.rectangle([0,y,W,y+FOOTER], fill=BG2)
-    draw.rectangle([0,y,W,y+1], fill=(42,43,40))
-    draw.text((40,y+24), "MatPrice Monitor  •  Powered by Groq AI (Free)", font=f_muted, fill=MUTED)
-    draw.text((W-130,y+24), "matprice", font=f_sub, fill=ACCENT)
+        # Space after category
+        draw.rectangle([0, y, W, y + 8], fill=(12, 15, 24))
+        y += 8
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    draw.rectangle([0, y, W, H], fill=(12, 15, 24))
+    draw.rectangle([0, y, W, y + 2], fill=(212, 175, 55))
+
+    # Footer text — no source mentioned
+    now_str = datetime.now().strftime("%d %b %Y, %H:%M")
+    draw.text((PAD, y + 28), f"Addis Ababa Market  •  {now_str}", font=f_footer, fill=(80, 90, 120))
+    draw.text((PAD, y + 52), "All prices in Ethiopian Birr (ETB)  •  For informational purposes only", font=f_footer, fill=(60, 70, 95))
+
+    # Gold bottom bar
+    draw.rectangle([0, H - 5, W, H], fill=(212, 175, 55))
 
     buf = io.BytesIO()
-    img.save(buf, "PNG")
+    img.save(buf, "PNG", quality=95)
     buf.seek(0)
     return buf
 
